@@ -1,0 +1,246 @@
+---
+title: "Desicion Trees & Association Rules"
+author: "Hugo Trivino"
+output: 
+  html_notebook:
+    toc: yes
+    toc_float: yes
+---
+
+
+```{r}
+setwd(".")
+set.seed(1122)
+options("digits"=3)
+library(caret)
+library(dplyr)
+library(psych)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(ROCR)
+
+```
+
+
+# 2.1 Decision tree classification
+
+## a) Remove all the observations that have ‘?’ in them
+```{r}
+adultTrain.df <- read.csv("adult-train.csv",sep=",",header=T,stringsAsFactors = T)
+adultTest.df <- read.csv("adult-test.csv",sep=",",header=T,stringsAsFactors = T)
+
+head(adultTest.df,6)
+idx=c()
+for (field in adultTrain.df) { idx <- c(idx,which(field == "?"))}
+adultTrain.df <- adultTrain.df[-c(idx),]
+idx=c()
+for (field in adultTest.df) { idx <- c(idx,which(field == "?"))}
+adultTest.df <- adultTest.df[-c(idx),]
+rm(field)
+rm(idx)
+```
+## b) Build a decision tree model using rpart()
+
+```{r}
+model <- rpart(income ~ ., method="class", data=adultTrain.df)
+```
+
+```{r}
+summary(model)
+```
+
+### (i) relationship,marital_status, and capital_gain  are the most important predictors in descending order.
+```{r}
+rpart.plot(model, extra=104, fallen.leaves = T, type=4, main="Rpart on adult train data (Full Tree)")
+```
+
+### (ii) The first split is done on relationship. The default predicted class is "<=50K" due to class inbalance. The distribution of observations between the “<=50K” and “>50K” classes at first node are 75% and 25% respectively (with 22653 and 7508 observations).
+
+## (c) Use the trained model from (b) to predict the test dataset. 
+```{r}
+pred <- predict(model, adultTest.df, type="class")
+confusionMatrix(pred, as.factor(adultTest.df$income))
+```
+
+
+### (i) The balanced accuracy of the model is 72.6%
+### (ii) The balanced error rate of the model is 27.4%
+### (iii) The sensitivity and specificity are 94.8% and 50.4% respectively. 
+### (iv) The AUC of the ROC curve is 84.3%.
+```{r}
+pred.rocr <- predict(model, newdata=adultTest.df, type="prob")[,2]
+f.pred <- prediction(pred.rocr, adultTest.df$income)
+f.perf <- performance(f.pred, "tpr", "fpr")
+auc <- performance(f.pred, measure = "auc")
+plot(f.perf, colorize=T, lwd=3,main=paste("AUC of ROC is ", round(auc@y.values[[1]], 4)))
+abline(0,1)
+
+```
+
+## (d)In this case, this tree would not benefit from pruning since at each split level the error decreases, including the cross validation error. Therefore, pruning this tree will increase the overall error of the model.
+
+```{r}
+options("digits"=5)
+printcp(model)
+
+```
+
+
+## e) Working with class imbalance problem in the training dataset.
+### (i)There are 22653 observations in the class "<=50K” and 7508 observations with the class “>50K”
+```{r}
+table (adultTrain.df$income)
+```
+### (ii) Creating a balanced training dataset by undersampling.
+```{r}
+newTrainingDataset <- adultTrain.df[-sample(which(adultTrain.df$income =="<=50K"),22653-7508),]
+table(newTrainingDataset$income)
+```
+
+### (iii) Training a new model based on the new balanced training dataset.
+```{r}
+balanceModel <- rpart(income ~ ., method="class", data=newTrainingDataset)
+```
+
+
+```{r}
+balPred <- predict(balanceModel, adultTest.df, type="class")
+confusionMatrix(balPred, as.factor(adultTest.df$income))
+```
+### (i) The balanced accuracy of the model is 80.3%
+### (ii) The balanced error rate of the model is 19.7%
+### (iii) The sensitivity and specificity are 76.9% and 83.8% respectively. 
+### (iv) The AUC of the ROC curve is 84.5%.
+```{r}
+balpred.rocr <- predict(balanceModel, newdata=adultTest.df, type="prob")[,2]
+f.balpred <- prediction(balpred.rocr, adultTest.df$income)
+f.balperf <- performance(f.balpred, "tpr", "fpr")
+balauc <- performance(f.balpred, measure = "auc")
+plot(f.balperf, colorize=T, lwd=3,main=paste("AUC of ROC is ", round(balauc@y.values[[1]], 4)))
+abline(0,1)
+
+```
+
+## (f) The first model was not balanced, therefore it was more likely to have a greater sensitivity to the label "<=50K". However this sensitivity caused a far greater number of false positives, which as a result decreased the specificity of the model. Therefore, the overall average between sensitivity and specificity was low (balance accuracy). On the other hand, a slight decrease in sensitivity in the balance model was perfect to discover more true negatives. Therefore, in this case, the trade of sensitivity produced a greater balance accuracy. Finally, the measure of this trade was a slight increase in 0.24 % in the ROC that shows that the variance of the classifier was better explained by the second model.
+
+#2.2 Random Forest
+## (a) Create a RF model using the entire training dataset.
+```{r}
+set.seed(1122)
+model <- randomForest(income ~ ., data=adultTrain.df,importance=T)
+```
+
+```{r}
+pred <- predict(model, adultTest.df, type="class")
+confusionMatrix(pred, as.factor(adultTest.df$income))
+```
+### (i) The balanced accuracy of the model is 78.4%
+### (ii) The accuracy of the model is 85.8%
+### (iii) The sensitivity and specificity are 93.0% and 63.8% respectively. 
+### (iv) There are 75.4% observations (11360) labeled "<=50K" and 24.6% observations (3700) labeled with class ">50K"
+```{r}
+table(adultTest.df$income)
+```
+
+### (v) They make sense because there is a reduction in the error by the ussage of several trees but there still are more "<=50K" observations in the training data so they will be more likely to be flag as a false positive. However, the specificity was still far better (13.4%) better than the unbalance desicion tree without random forest.
+
+### (vi) For MeanDecreaseAccuracy, the most important variable is capital_gain and the least important one is fnlwgt. For MeanDecreaseGini, the most important variable is relationship and the least important one is race.
+```{r}
+varImpPlot(model)
+```
+
+### (vii) the number of variables tried at each split is 3.
+```{r}
+print(model)
+```
+
+## (b) Tuning RF model by finding the best mtry value.
+```{r}
+mtry <- tuneRF(adultTrain.df[,-ncol(adultTrain.df)], adultTrain.df$income, ntreeTry=500, stepFactor=1.5,improve=0.01, trace=TRUE, plot=TRUE)
+print(mtry)
+```
+
+
+###(i) The default value of mtry is 4 because that is the we have 15 fields which can be binary split 4 times.
+
+### (ii) The optimal split value is 2.
+
+### (iii) creating and testing new model with mtry=2
+```{r}
+optmodel <- randomForest(income ~ ., data=adultTrain.df,importance=T,mtry=2)
+optpred <-predict(optmodel, adultTest.df, type="class")
+confusionMatrix(optpred, as.factor(adultTest.df$income))
+```
+
+#### (1) The balanced accuracy of the model is 78.4%
+#### (2) The accuracy of the model 86.0%
+#### (3) The sensitivity and specificity of the model are 93.5% and 63.3% respectively.
+#### (4) For MeanDecreaseAccuracy, the most important variable is capital_gain and least important is fnlwgt. For MeanDecreaseGini, the most important variableis capital_gain and the least important one is race.
+```{r}
+varImpPlot(optmodel)
+```
+### (iv) Although the balance accuracy of the model was maintained, the overall accuracy was improved slightly (0.2%). The sensitivity was reduced and counterbalanced by an equal increase in the specificity of the model.
+
+
+# 2.3 Association rules
+
+
+```{r}
+set.seed(1122)
+library(arules)
+library(arulesViz)
+setwd(".")
+rm(list=ls())
+```
+
+```{r}
+trans <- read.transactions("groceries.csv", sep=",")
+summary(trans)
+```
+## (i) Running apriori() on the transaction set with a support value of 0.1. Using the default, we generate zero rules.
+```{r}
+f_is <-apriori(trans, parameter = list(support=0.1))
+summary(f_is)
+
+rm(f_is)
+```
+
+
+## (ii) We get 400 rules by having a support value of 0.001 in order to get at least 400 rules (410 rules).
+inspect(sort(f_is, decreasing = T, by="count"))
+```{r}
+f_is <-apriori(trans, parameter = list(support=0.001))
+summary(f_is)
+
+```
+
+## (iii) According to summary the most frequent element is whole milk bought 2513 times followed by other vegetables bought 1903 times
+
+```{r}
+summary(trans)
+```
+
+
+
+## (iv) The least frequent element is baby food with only one item sold.
+```{r}
+sort(table(unlist(LIST(trans))))[1:1]
+```
+
+## (v) The top 5 rules sorted by suport are:
+```{r}
+inspect(sort(f_is, by='support', decreasing = T)[1:5])
+```
+## (vi) The top 5 rules, sorted by confidence are:
+```{r}
+inspect(sort(f_is, by='confidence', decreasing = T)[1:5])
+```
+## (vii) The bottom 5 rules, sorted by support are:
+```{r}
+inspect(sort(f_is, by='support', decreasing = F)[1:5])
+```
+## (viii)The bottom 5 rules, sorted by confidence are:
+```{r}
+inspect(sort(f_is, by='confidence', decreasing = F)[1:5])
+```

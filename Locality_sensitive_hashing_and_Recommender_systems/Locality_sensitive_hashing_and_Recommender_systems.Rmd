@@ -1,0 +1,303 @@
+---
+title: "Locality sensitive hashing & Recommender systems"
+author: "Hugo Trivino"
+output: 
+  html_notebook:
+    toc: yes
+    toc_float: yes
+---
+
+```{r}
+setwd(".")
+set.seed(1122)
+options("digits"=3)
+library(textreuse)
+library(lsa)
+
+```
+
+#2.1 Topic: Locality sensitive hashing
+
+##(a) Visualizing our dataset as a characteristic matrix, what is the size (rows and columns) of our characteristic matrix?
+
+
+```{r}
+files <- list.files("./hw4.movies",full.names = T)
+corpus <-TextReuseCorpus(files, tokenizer = tokenize_ngrams, n = 5,
+keep_tokens = TRUE,progress = F)
+shingles <-c()
+for (x in 1:length(corpus)){
+  h <- paste0("000",x)
+  user <-"user"
+  user <- paste0(user,substr(h,start=nchar(h)-2,nchar(h)))
+  shingles <- union(shingles,tokens(corpus[[user]]))
+}
+cat(
+  paste0("(a) The characteristic matrix has ",length(shingles), " rows and ", length(corpus)," Columns\n")
+)
+rm(h,shingles,x,user)
+```
+##(b) Let’s take a look at user ID 20. For this user, answer the following questions by examining the object returned from corpus[["user20"]]
+
+```{r}
+d <- corpus[["user020"]]
+cat(
+  paste0("(i)\tThis user has rated: ",stringr::str_count(d$content,"\n")," movies\n")
+)
+cat("(ii)\tThe first five shingles for this user are:\n")
+for (x in 1:5){
+  cat(paste("\t",x,"-> ",tokens(d)[x],"\n"))
+}
+rm(x,d)
+```
+
+
+##(c)Let’s find similar users using the brute-force pairwise method first. Using pairwise_candidates() and pairwise_compare(), to get a tibble that contains all of the pairwise candidates.
+```{r}
+res <- pairwise_candidates(pairwise_compare(corpus, jaccard_similarity,progress = F))
+
+```
+
+
+
+```{r}
+ans=""
+for (x in which(res$score>=0.4)){
+  ans<-paste0(ans,res[x,1]," <--> ")
+  ans<-paste0(ans,res[x,2]," score of -> ")
+  ans<-paste0(ans,res[x,3],"\n\t ")
+  
+}
+cat(
+  paste(
+    " (i)\tThere are ",length(which(res$score>=0.6))," pairs with score at least 0.60\n",
+    "(ii)\tThere are ",length(which(res$score>=0.5))," pairs with score at least 0.50\n",
+    "(iii)\tThere are ",length(which(res$score>=0.4))," pairs with score at least 0.40\n",
+    "(iv)\tThe pairs with a score of at least 0.4 are:\n\t",
+    ans
+  )
+)
+rm(ans,x)
+```
+##(d)Now, let’s prepare to use LSH and find candidate pairs in a more optimized manner. First, we determine the parameters (number of minhashes and bands).
+```{r}
+
+#print("(iv) The pairs with a score of at least 0.4 are:")
+r=1
+b=5
+
+cat(paste0(
+  "(i) With ",r*b," minhash signatures and ",
+  b, " bands, we can obtain a LSH probability of ",
+  lsh_probability(h=r*b,  b=b, s=0.60),"\n"
+  #format(lsh_probability(h=r*b,  b=b, s=0.60)),digits=5)
+  )
+)
+minhash <- minhash_generator(n=r*b, seed=100)
+corpus2 <- TextReuseCorpus(files, tokenizer = tokenize_ngrams, n = 5,
+                          minhash_func = minhash, keep_tokens = TRUE,progress = F)
+cat(
+  "(ii) The first minhashes of user020 are:\n\t",
+  paste(minhashes(corpus2[["user020"]]),"\n\t")
+)
+
+```
+##(e) Now run LSH and find candidate pairs in an optimized way. Then answer the following:
+```{r}
+lsh_threshold(h=b,b=5)
+buckets <- lsh(corpus2, bands = 5, progress=F)
+candidates2 <- lsh_candidates(buckets)
+res2 <- lsh_compare(candidates2, corpus, jaccard_similarity,progress = F)
+```
+
+```{r}
+
+ans=""
+for (x in which(res2$score>=0.4)){
+  ans<-paste0(ans,res2[x,1]," <--> ")
+  ans<-paste0(ans,res2[x,2]," score of -> ")
+  ans<-paste0(ans,res2[x,3],"\n\t ")
+  
+}
+cat(
+  paste0(
+    "(i) I expect to find zero candidates with a Jaccard similarity between 0.60 and 0.50",
+         " and there are ",length(which(res2$score>=0.5)), " candidate pairs.",
+         "I do not expect any candidate pairs since I expect to find 80% of s=0.6. And there are not pairs with such Jaccard similarity or with s >=0.5.\n",
+    "(ii)\t The pairs with a score of at least 0.4 are:\n\t ",
+    ans,
+    "\n  There were only ", length(res2$a), " comparisons.\n",
+    "(iii) Only 75% are the same as shown in part (c)(iv).\n",
+    "(iv) The number of comparisons performed in the optimized version is ",
+    format(length(res2$a)/length(res$a)*100,digits = 4), "% of the original comparison. ",
+    "Since there were only ",length(res2$a)," comparisons instead of ",length(res$a)," we saved " , format(100-length(res2$a)/length(res$a)*100,digits = 4),"% of the work.\n"
+  )
+)
+
+rm(list=ls())
+
+```
+
+#2.2 Topic: Content-based recommendation system (2 Points)
+```{r}
+
+ratings <-  read.csv(file = "ml-latest-small/ratings.csv",sep = ",")
+
+movies <-read.csv(file = "ml-latest-small/movies.csv",sep = ",")
+genreVector <-c()
+
+for (genreLst in movies[,3]){
+  genxmovie<-strsplit(genreLst,split = "|",fixed = T)
+  for (genre in genxmovie){
+    genreVector<-union(genre,genreVector)
+  }
+  if(length(genreVector)>=20){
+    break
+  }
+}
+genreVector <- sort(genreVector)
+createUserProfile <-function(userID){
+    moviesId <-c(ratings[which(ratings$userId== userID),c(2)])
+    genreMatrix<-c()
+    moviesIdx <- which(movies$movieId %in% moviesId)
+    for (genreLst in movies[moviesIdx,3]){
+      genxmovie<-strsplit(genreLst,split = "|",fixed = T)
+      for (genre in genxmovie){
+        genreMatrix<-append(genreMatrix,genre)
+      }
+    }
+    userProfile <-c()
+    for (genre in genreVector){
+      userProfile <-append(userProfile,length(which(genreMatrix==genre)))
+    }
+    userProfile <- userProfile /length(moviesIdx)
+    return(userProfile)
+}
+createMovieProfile <-function(movieId){
+  movieIdx <- which(movies$movieId == movieId)
+  genres <- as.character(movies[movieIdx,3]) 
+  genres <- strsplit(genres,"|",fixed=T)
+  vG<-c()
+  for (g in genres){
+    vG <- union(vG,g)
+  }
+  genres <-vG
+  genres <-as.factor(genres)
+  movieProfile <- c()
+  for (genre in genreVector){
+    movieProfile<-append(movieProfile,genre %in% genres *1)
+  }
+  return(movieProfile)
+}
+
+set.seed(1122)
+user<- 20391413 %% 671
+#user<-1
+uservector <-createUserProfile(user)
+moviesSeen <- ratings$movieId[which(ratings$userId==user)]
+moviestorecomend <-sample(movies$movieId,size = length(moviesSeen)+10)
+moviestorecomend <-sample(setdiff(moviestorecomend,moviesSeen),size = 10)
+recommendable <-c()
+movieName<-c()
+for (movie in moviestorecomend){
+  recommendable <- append(recommendable,cosine(createMovieProfile(movie),uservector))
+  movieName <- rbind(movieName, movies[which(movies$movieId==movie),] )
+}
+
+recommender <-data.frame(movieName[,1:2],recommendable,row.names = 1:10)
+recommender <- data.frame(recommender[order(recommender$recommendable,decreasing = T),],row.names = 1:10)
+print(recommender[1:5,])
+
+```
+
+#2.3  Topic: Collaborative Filtering (2 points)
+##(a) Prediction using user-user similarity:
+```{r}
+user <- 191
+userRating <-ratings[which(ratings$userId ==user),]
+actualRating <-userRating[which(userRating$movieId %in% c(150,296,380,590)),]
+userRating[which(userRating$movieId %in% c(150,296,380,590)),]$rating <- NA
+#print(userRating)
+
+otherUsers <-c(375, 225, 513, 50, 657)
+simUser <- c(0.3049645,0.2420382,0.4358974,0.2009804, 0.2262774)
+rtnOther <-c()
+rtnMatrix<-data.frame()
+for (other in otherUsers){
+  rtnOther <-c()
+  otherUserRating<-ratings[which(ratings$userId==other),]
+  for (movieToRate in c(150,296,380,590)){
+    if (length(which(otherUserRating$movieId==movieToRate))>0){
+      rtnOther<-cbind(rtnOther,otherUserRating[which(otherUserRating$movieId==movieToRate),]$rating)
+    }else{
+      rtnOther<-cbind(rtnOther,NA)
+    }
+  }
+  rtnMatrix <-rbind(rtnMatrix,rtnOther)
+  #print(otherUserRating[which(otherUserRating$movieId %in% c(150,293,380,590)),])
+}
+
+colnames(rtnMatrix)<-c(150,296,380,590)
+row.names(rtnMatrix)<-otherUsers
+finalRating <-c(0,0,0,0)
+for (x in 1:3){
+  for (y in 1:4){
+    finalRating[y] <-finalRating[y]+rtnMatrix[x,y] * simUser[x]/sum(simUser[1:3])
+  }
+  
+}
+rmse <-0
+cat(paste0("User ID 191, 5 random user IDs: 375, 225, 513, 50, 657\n",
+           "Using user-user similarity, User ID 191 will rate the movies as follows:\n"
+           ))
+
+
+for (c in 1:4) {
+  cat(paste0(c(150,296,380,590)[c],":",format(finalRating[c],digits=4),"\n"))
+  rmse <- 1/4*((actualRating$rating[c] - finalRating[c])^2)^0.5 + rmse
+}
+cat(paste0("RMSE:",format(rmse,digits=4),"\n"))
+```
+##(b) Prediction using item-item similarity:
+```{r}
+user <- 191
+userRating <-ratings[which(ratings$userId ==user),]
+actualRating <-userRating[which(userRating$movieId %in% c(150,296,380,590)),]
+userRating[which(userRating$movieId %in% c(150,296,380,590)),]$rating <- NA
+#print(userRating)
+moviesSim <-c()
+moviessimMatrix <-c()
+moviesWatched <- setdiff(userRating$movieId,c(150,296,380,590))
+for (x in c(150,296,380,590)){
+  profileMovie <- createMovieProfile(x)
+  for (m in moviesWatched){
+    moviesSim <- append(moviesSim,cosine(createMovieProfile(m),profileMovie))
+  }
+  moviessimMatrix <-cbind(moviessimMatrix,moviesSim)
+  moviesSim <-c()
+}
+#moviessimMatrix <- data.frame(moviesSim[1:length(moviesWatched)],moviesSim[length(moviesWatched)+1:2*length(moviesWatched)],)
+moviessimMatrix<-cbind(moviessimMatrix,moviesWatched)
+
+finalRating <-c(0,0,0,0)
+for (m in 1:4){
+  neighboor <- moviessimMatrix[order(moviessimMatrix[,m],decreasing=T),]
+  for (r in 1:3){
+    finalRating[m] <- neighboor[r,m]/sum(neighboor[1:3,m])*userRating$rating[userRating$movieId==neighboor[r,5]] + finalRating[m] 
+}
+}
+cat(paste0("User ID 191, 5 random user IDs: 375, 225, 513, 50, 657\n",
+           "Using item-item similarity, User ID 191 will rate the movies as follows:\n"
+           ))
+
+
+for (c in 1:4) {
+  cat(paste0(c(150,296,380,590)[c],":",format(finalRating[c],digits=4),"\n"))
+  rmse <- 1/4*((actualRating$rating[c] - finalRating[c])^2)^0.5 + rmse
+}
+cat(paste0("RMSE:",format(rmse,digits=4),"\n"))
+
+
+```
+
+

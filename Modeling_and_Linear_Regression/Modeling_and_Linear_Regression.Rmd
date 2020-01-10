@@ -1,0 +1,366 @@
+---
+title: "Introduction & Linear Regression Analysis"
+author: "Hugo Trivino"
+output: 
+  html_notebook:
+    toc: yes
+    toc_float: yes
+---
+
+
+```{r}
+setwd(".")
+library(psych)
+library(dplyr)
+```
+# Questions
+# 1 Recitation problems
+## 1.1 
+### a) If the gender is predicted using machine learning algorithms it would be a data mining task. However, if it is only filtering data, it can be done using a simple DBMS which is not a data mining task.
+### b) Again if the task is calculated using deterministic information is surely a database or software development task. However, if it is predicted by training a learning algorithms it can be done using datamining.
+### c) Same answer as (a) and (b)
+### d) No, it is a database task
+### e) No, it is a simple probability task
+### f) Yes, this is most likely implemented by using some data mining algorithm.
+### g) Yes, since abnormalities can be detected by using clustering algorithms, it is likely a data mining task
+### h) Yes, because the answer it is not straight forward and it has to be learned from sensors and previous experiences.
+### i) Yes, it can be done using datamining to learn how to distinguish the signals that can be noise vs the desired sound.  
+
+## 1.3 
+### a) Since Census data is likely to be public it would not have important privacy implications.
+### b) Yes, this information should be treated carefully to provide privacy to users of the website.
+### c) Images from orbit satelites can be private in the case of spy satelites. However, in many cases this information is public
+### d) This information is already public enough not to be important for privacy.
+### e) Depending of the methods of gathering this information and the legislation of the country of residence.
+
+## 2.2 
+### (a) Binary, qualitative, ordinal
+### (b) Continuous, quantitative, ratio
+### (c) Discrete, qualitative, ordinal
+### (d) Discrete, quantitative, ratio
+### (e) Discrete, qualitative, ordinal
+### (f) Continuous, quantitative, ratio
+### (g) Discrete, quantitative, ratio
+### (h) Discrete, qualitative, nominal
+### (i) Discrete, qualitative, ordinal
+### (j) Discrete, qualitative, ordinal
+### (k) Continuous, quantitative, ratio
+### (l) Continuous, quantitative, ratio
+### (m) Discrete, qualitative, nominal
+## 3 
+### (a) His boss is probably right because the counts of complaints by themselves are not a measure of satisfaction if not normalized by the total number of purchased products. If the best selling product has more sales is more likely to handle a greater number of complaints because more users are using it, not because it is worst or they wouldn't buy it in the first place.
+### (b) It is likely to be a ratio attribute that would be calculated based on some ordinal inputs from the user.
+
+## 7 
+### Daily temperature is more likely to have a strong temporal correlation since the temperature fluctuates within each season slowly. It will highly depend of the specific application. There are places in the world with rainy seasons in which the temporal correlation of rain in a day is highly predictive for the next days.
+
+## 12 
+### (a) Noise is normally not interesting or desirable. Outliers might be of high interest for some data mining applications like finding malicious trafic or anomalies. 
+### (b) Yes, it can look like a noise and be in fact an outlier
+### (c) No, most of the time noise is produced by errors in the medium and not in the data. Outliers are part of the data.
+### (d) No, the outlier can be clearly detected
+### (e) Yes, this can happen (example can be when two bits are flipped so parity still check and now it looks like an outlier)
+# 2 Practicum problems
+## Problem 2.1 
+
+### a) Printing first 6 records
+```{r}
+college.df <- read.csv("College.csv",sep=",",header=T,stringsAsFactors = F)
+head(college.df,6)
+```
+### b) Printing totals private vs public colleges
+```{r}
+numPrivPubl<-table(college.df$Private)
+names(numPrivPubl) <- c("Public","Private")
+print(numPrivPubl)
+```
+### c) Historigrams of Phd holding faculty
+As shown in the folloring graphs, public colleges have a higher mean of PhD faculty. There are almost no public universities with less of 45% PhD holding faculty. In the private sector, there are far more universities in which more faculty without a PhD are allowed to teach. However, a greater amount of private colleges have more than 90% of their faculty holding PhD's than in public institutions. This results shows that there is a far greater variance in the private colleges in their faculty selection.   
+
+```{r}
+
+public.df <- college.df[college.df$Private=="No",][-c(2)]
+private.df <- college.df[college.df$Private=="Yes",][-c(2)]
+hist(public.df$PhD,
+     main="Phd Holders in Public Universities",
+     xlab=paste("Phd ( mean:",sprintf("%5.1f",mean(public.df$PhD)),")"),
+     col="blue",
+     freq = FALSE,
+     nclass = 20)
+lines(density(public.df$PhD),col="black",type = "l")
+
+hist(private.df$PhD,
+     main="Phd Holders in Private Universities",
+     xlab=paste("Phd ( mean:",sprintf("%5.1f",mean(private.df$PhD)),")"),
+     freq=FALSE,
+     col="red",
+     nclass = 20
+)
+lines(density(private.df$PhD),col="black",type = "l")
+```
+### d) Printing colleges with lowest and highest graduation rates.
+Colleges with the Lowest Graduation Rates
+```{r}
+collegeGrad.df <-college.df[college.df$Grad.Rate<=100,]
+#There shouldn't be colleges with graduation rate higher than 100%
+CollByGradRate.df <- select(arrange(collegeGrad.df,collegeGrad.df$Grad.Rate),Name,Grad.Rate)
+ head(CollByGradRate.df,5)
+```
+
+Colleges with the Highest Graduation Rates
+```{r}
+tail(CollByGradRate.df,5)
+```
+### e) Print summary, scatterplots, and personal insights on the data.
+#### i)
+```{r}
+summary(college.df)
+
+```
+#### ii.
+```{r}
+#To look at a better resolution, uncomment
+#bitmap("colleges.tiff", height = 4, width = 4, units = 'in', type="tifflzw", res=300)
+pairs(college.df[,3:12],main="Colleges Correlations")
+pairs.panels(college.df[,3:12], 
+   main="Colleges Correlations",
+   pch=19
+   )
+
+```
+#### iii.
+```{r}
+names<-c("Private","Public")
+boxplot(college.df[college.df$Private=="Yes",]$perc.alumni,college.df[college.df$Private=="No",]$perc.alumni,names=names,ylab="Percentage")
+title("Alumni who Donate")
+```
+#### iv.
+```{r}
+names<-c("Private","Public")
+boxplot(college.df[college.df$Private=="Yes",]$PhD,college.df[college.df$Private=="No",]$PhD,names=names,ylab="Percentage")
+title("Faculty with PhD")
+
+```
+#### v.
+```{r}
+
+college<-college.df
+Elite <- rep("No",nrow(college))
+Elite[college$Top10perc > 50] <-"Yes"
+Elite <- as.factor(Elite)
+college <-data.frame(college,Elite)
+summary(college)
+
+```
+#### vi.
+```{r}
+par(mfrow=c(3,2))
+hist(college[college$Elite=="Yes",]$PhD,
+     main = "Elite Colleges",
+     xlab=paste("Phd Faculty (mean:",
+                sprintf("%5.1f",mean(college[college$Elite=="Yes",]$PhD))
+                        ,")"),
+     col="green")
+hist(college[college$Elite=="No",]$PhD,
+     main = "Non-Elite Colleges",
+     xlab=paste("Phd Faculty (mean:",
+                sprintf("%5.1f",mean(college[college$Elite=="No",]$PhD))
+                        ,")"),
+     col="red")
+hist(college[college$Elite=="Yes",]$Grad.Rate,
+     main = "Elite Colleges",
+     xlab=paste("Graduation Rate (mean:",
+                sprintf("%5.1f",mean(college[college$Elite=="Yes",]$Grad.Rate))
+                        ,")"),
+     col="green")
+hist(college[college$Elite=="No",]$Grad.Rate,
+     main = "Non-Elite Colleges",
+     xlab=paste("Graduation Rate (mean:",
+                sprintf("%5.1f",mean(college[college$Elite=="No",]$Grad.Rate))
+                        ,")"),
+     col="red")
+hist(college[college$Elite=="Yes",]$Outstate,
+     main = "Elite Colleges",
+     xlab=paste("Out-of-State Tuition (mean:",
+                sprintf("%5.1f",mean(college[college$Elite=="Yes",]$Outstate))
+                        ,")"),
+     col="green")
+hist(college[college$Elite=="No",]$Outstate,
+     main = "Non-Elite Colleges",
+     xlab=paste("Out-of-State Tuition (mean:",
+                sprintf("%5.1f",mean(college[college$Elite=="No",]$Outstate))
+                        ,")"),
+     col="red")
+
+```
+#### vii.
+
+We can observe that the elite colleges have a higher porcentage of donations from alumni than both public and private colleges without the outlayers in the higher end either. 
+We can see that private colleges actually does not mean Elite college given by its low correlation. We can infer from these panels plots that the the retention rate in general is strongly negative correlated with the student faculty ratio of an institution. We observe that the elite colleges have a strong correlation with the precense of terminal professors as faculty which is contrary to the tendency of colleges in general.
+```{r}
+names<-c("Elite Colleges","Private Colleges","Public Colleges")
+boxplot(college[college$Elite=="Yes",]$perc.alumni,
+        college.df[college.df$Private=="Yes",]$perc.alumni,
+        college.df[college.df$Private=="No",]$perc.alumni,
+        names=names,ylab="Percentage", main="Alumni Who Donate")
+pairs.panels(college[,c(2,20,16,19,15)])
+```
+
+## 2.2 Linear regression
+
+### (a) Cleaning datasheet
+
+
+#### i.
+```{r}
+mpg.df <- read.csv("auto-mpg.csv",sep=",",header=T,stringsAsFactors = F)
+mpg.df <- mpg.df[-c(which(mpg.df$horsepower== "?")),]
+
+```
+#### ii.
+```{r}
+
+str(mpg.df$horsepower)
+mpg.df$horsepower <- as.integer(mpg.df$horsepower)
+str(mpg.df$horsepower)
+```
+### (b) Selecting the strongest correlation
+```{r}
+typ <-c("double","integer","numeric")
+x<-0
+y<-0
+listCorr=c()
+namesOfCorr= c()
+listAbs=c()
+colNumber=c()
+for (variable in mpg.df) {
+  x=x+1
+  name <-names(mpg.df)[x]
+  if(typeof(variable)%in% typ){
+    y=y+1
+    plotting.df <-data.frame(mpg.df$mpg, variable)
+    namesOfCorr[y] <-name
+    listCorr[y]<-cor(plotting.df)[2]
+    listAbs[y]<-abs(cor(plotting.df)[2])
+    colNumber[y]<-x
+  }
+}
+corr.df=data.frame(listCorr, listAbs,namesOfCorr,colNumber)
+colnames(corr.df) <- c("correlation","absValue","field","columnNumber")
+corr.df <-corr.df[-c(1),]
+corr.df <- arrange(corr.df,corr.df$absValue)
+
+pairs.panels(mpg.df[,c(1,tail(corr.df,1)$columnNumber)])
+
+```
+```{r}
+model.mpg <- lm(formula = paste("mpg ~ ",tail(corr.df,1)$field,sep = "") ,data = mpg.df)
+summary(model.mpg)
+```
+
+### (c) Ploting regression line
+```{r}
+plot(mpg.df[,c(tail(corr.df,1)$columnNumber,1)],main="Regression line of mpg ~ weight")
+abline(model.mpg)
+
+```
+```{r}
+
+set.seed(1122)
+index <- sample(1:nrow(mpg.df), 0.80*dim(mpg.df)[1])
+train.df <- mpg.df[index, ]
+test.df <- mpg.df[-index, ]
+
+```
+### (d) Training model based on dataset
+```{r}
+train.model <- lm(formula = paste("mpg ~ ",paste(corr.df$field,collapse = " + ")) ,data = train.df)
+summary(train.model)
+```
+#### i.
+Since car.name is unique for each instance, it cannot be used as a predictor. 
+#### ii.
+```{r}
+train.model <- lm(formula = paste("mpg ~ ",paste(corr.df$field,collapse = " + ")) ,data = train.df)
+summary(train.model)
+```
+### (e) Selecting only three strong predictors
+
+#### i. These three predictors were determined to be significant in the previous code
+```{r}
+train.model <- lm(formula =mpg ~ origin + model.year + weight ,data = train.df)
+summary(train.model)
+```
+#### ii. Show the summary of the new model 
+It contained a great $R^2$ value since it explains about 83% of the variance in the data. This is clearly a high percentage without overfiting to the training dataset.
+```{r}
+summary(train.model)
+anova(train.model)
+```
+
+### (f) Ploting the residuals shows that they are randomly cluster around zero
+```{r}
+plot(train.model$residuals,col="blue")
+abline(0,0)
+```
+### (g) We can see that the data is homosceadastic slightly skewed. But it looks almost as gaussian curve.
+```{r}
+hist(train.model$residuals, freq = FALSE,col="yellow", nclass=20)
+lines(density(train.model$residuals))
+```
+### (h) Finding exact matchs
+```{r}
+dfs<- data.frame(test.df$mpg,round(predict(train.model, newdata=test.df),0))
+differ <- dfs[,1]-dfs[,2]
+colnames<-c("difference")
+z=0
+for (variable in differ) {
+  if(variable == 0.0){
+    z=z+1
+  }  
+}
+
+print(paste('If the model prediction is rounded to an integer value, the predictor would match successfully ',z," observations"))
+dfs<- data.frame(test.df$mpg,round(predict(train.model, newdata=test.df),1))
+differ <- dfs[,1]-dfs[,2]
+colnames<-c("difference")
+z=0
+for (variable in differ) {
+  if(variable == 0.0){
+    z=z+1
+  }  
+}
+
+print(paste('If the model prediction is rounded to one significant value, the predictor would match successfully ',z," observations"))
+
+#which(mpg.df$horsepower== "?")
+#lines(dfs[,1])
+#lines(dfs[,2])
+```
+
+#### i. Printing the error based statistics only using the residual vector.
+
+```{r}
+dfs<- data.frame(test.df$mpg,round(predict(train.model, newdata=test.df),0))
+differ <- dfs[,1]-dfs[,2]
+colnames<-c("difference")
+z=0
+RSS<-0
+ESS<-0
+for (x in 1:length(dfs[,1])){
+  ESS=ESS + (dfs[x,1]-mean(dfs[,2]))^2
+}
+for (errs in differ) {
+    RSS=RSS+errs^2
+    #ESS=ESS+(errs-mean(differ))
+}
+RMSE=sqrt(mean((dfs[,1] -dfs[,2])^2))
+RSE=sqrt((RSS)/(length(differ)-2))
+TSS=ESS + RSS
+print(paste("RSS: ",RSS))
+print(paste("TSS: ",TSS))
+print(paste("RSE: ",RSE))
+print(paste("RMSE: ",RMSE))
+```
+
+
